@@ -15,6 +15,7 @@ import { FileStreamInterceptor } from './interceptors/file-stream.interceptor';
 import { Request, Response } from 'express';
 import { tap } from 'rxjs';
 import { createJsonToCsvStream } from './utils/json-to-csv-stream';
+import { RequestExcel } from './types/request-excel';
 
 async function handleFileStream(file: any) {
   try {
@@ -40,8 +41,8 @@ export class AppController {
 
   @Post('/test/interceptor')
   @UseInterceptors(FileStreamInterceptor)
-  async uploadFileWithInterceptor(@Req() req: Request, @Res() res: Response) {
-    const excelStream = req['excelStream'];
+  async uploadFileWithInterceptor(@Req() req: RequestExcel, @Res() res: Response) {
+    const excelStream = req.excelStream;
 
     if (!excelStream) {
       return res.status(400).send('Nenhum arquivo enviado ou processado');

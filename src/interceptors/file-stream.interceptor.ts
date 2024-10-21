@@ -1,4 +1,9 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+} from '@nestjs/common';
 import { Observable } from 'rxjs';
 import * as Busboy from 'busboy';
 import * as ExcelJS from 'exceljs';
@@ -18,22 +23,28 @@ export class FileStreamInterceptor implements NestInterceptor {
         objectMode: true, // Ativa o modo objeto
         read() {
           // Inicia a stream para ler o arquivo na requisição
-          request.pipe(busboy); 
+          request.pipe(busboy);
         },
       });
-      
+
       // Intercepta e trata o arquivo enviado
       busboy.on('file', async (_, fileStream, metadata) => {
         console.log(`Recebendo arquivo: ${metadata.filename}`);
 
         // Apenas processar arquivos do Excel
-        if (metadata.mimeType !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+        if (
+          metadata.mimeType !==
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ) {
           response.status(400).send('Tipo de arquivo não suportado');
           return;
         }
 
         // Criar o leitor de workbooks do ExcelJS
-        const workbookReader: any = new ExcelJS.stream.xlsx.WorkbookReader(fileStream, {});
+        const workbookReader: any = new ExcelJS.stream.xlsx.WorkbookReader(
+          fileStream,
+          {},
+        );
 
         // Finaliza o processamento do workbook
         workbookReader.on('finished', () => {
@@ -48,9 +59,8 @@ export class FileStreamInterceptor implements NestInterceptor {
               rowNumber: row.number,
               values: row.values,
             });
-            
-            console.log(rowData)
-            excelStream.push(rowData)
+
+            excelStream.push(rowData);
           }
           console.log('Processamento do worksheet concluído');
           break;
@@ -60,15 +70,14 @@ export class FileStreamInterceptor implements NestInterceptor {
         excelStream.push(null);
 
         // Encerra a leitura do arquivo pra liberar o busboy
-        fileStream.resume()
+        fileStream.resume();
       });
 
-      
       // Finaliza a leitura do busboy
       busboy.on('finish', () => {
-        console.log("Busboy finalizado")
+        console.log('Busboy finalizado');
       });
-      
+
       // Anexa o stream à requisição
       request['excelStream'] = excelStream;
 
