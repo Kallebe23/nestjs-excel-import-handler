@@ -5,11 +5,16 @@ import {
   Post,
   Req,
   Res,
+  UseInterceptors,
   // UnauthorizedException,
 } from '@nestjs/common';
 import { AppService } from './app.service';
 import * as busboy from 'busboy';
 import * as ExcelJS from 'exceljs';
+import { FileStreamInterceptor } from './interceptors/file-stream.interceptor';
+import { Request, Response } from 'express';
+import { tap } from 'rxjs';
+import { createJsonToCsvStream } from './utils/json-to-csv-stream';
 
 async function handleFileStream(file: any) {
   try {
@@ -32,6 +37,26 @@ async function handleFileStream(file: any) {
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
+
+  @Post('/test/interceptor')
+  @UseInterceptors(FileStreamInterceptor)
+  async uploadFileWithInterceptor(@Req() req: Request, @Res() res: Response) {
+    const excelStream = req['excelStream'];
+
+    if (!excelStream) {
+      return res.status(400).send('Nenhum arquivo enviado ou processado');
+    }
+
+    // Faz o pipe do stream da worksheet para a resposta
+    excelStream.on('end', (result) => {
+      console.log('result', result);
+      res.json({ message: "OK" })
+    });
+
+    const jsonToCsvPipe = createJsonToCsvStream();
+
+    excelStream.pipe(jsonToCsvPipe).pipe(res);
+  }
 
   @Post('/test/import')
   uploadFile(@Req() req, @Res() res, @Next() next) {
