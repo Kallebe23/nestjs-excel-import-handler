@@ -1,23 +1,18 @@
-import { Transform } from 'stream';
+import { Transform, TransformCallback } from 'stream';
 
-const createJsonToCsvStream = () => {
-  return new Transform({
-    encoding: 'utf8',
-    transform: (chunk, encoding, cb) => {
-      // Extract the keys (column names) and their corresponding values
-      const object = JSON.parse(chunk)
+export class JsonToCsvTransform extends Transform {
+  constructor() {
+    super({ encoding: 'utf8' });
+  }
 
-      if(object.rowNumber === 3) {
-        cb(null, new Error('validation error'))
-        return
-      }
-      const headers = Object.keys(object);
-      const values = headers.map((header) => object[header]);
-
-      // Join the values with a separator (e.g., ';') and add a newline at the end
-      cb(null, values.join(';') + '\n');
-    },
-  });
-};
-
-export { createJsonToCsvStream }
+  _transform(
+    chunk: Buffer | string,
+    encoding: string,
+    cb: TransformCallback,
+  ): void {
+    // Converte JSON diretamente em CSV e passa para o próximo stream
+    const csvLine =
+      Object.values(JSON.parse(chunk.toString())).join(';') + '\n';
+    cb(null, csvLine);
+  }
+}

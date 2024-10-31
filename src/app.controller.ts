@@ -1,21 +1,24 @@
 import {
   Controller,
+  HttpException,
   HttpStatus,
   Next,
   Post,
   Req,
   Res,
   UseInterceptors,
-  // UnauthorizedException,
 } from '@nestjs/common';
 import { AppService } from './app.service';
 import * as busboy from 'busboy';
 import * as ExcelJS from 'exceljs';
 import { FileStreamInterceptor } from './interceptors/file-stream.interceptor';
-import { Request, Response } from 'express';
-import { tap } from 'rxjs';
-import { createJsonToCsvStream } from './utils/json-to-csv-stream';
+import { Response } from 'express';
+import { JsonToCsvTransform } from './utils/json-to-csv-stream';
 import { RequestExcel } from './types/request-excel';
+import { pipeline } from 'stream';
+import { createWriteStream } from 'fs';
+import { EntityValidationPipe } from './utils/validation/validation-stream';
+import { testSchema } from './utils/validation/test-schema';
 
 async function handleFileStream(file: any) {
   try {
@@ -24,7 +27,6 @@ async function handleFileStream(file: any) {
 
     for await (const worksheetReader of workbookReader) {
       for await (const row of worksheetReader) {
-        // throw new UnauthorizedException();
         console.log(row.values);
       }
       break;
@@ -35,32 +37,61 @@ async function handleFileStream(file: any) {
   }
 }
 
+const header = [
+  'CD_LOCALIDADE',
+  'NM_LOCALIDADE',
+  'CD_BAIRRO',
+  'NM_BAIRRO',
+  'CD_IBGE',
+  'UF',
+  'CD_DIST',
+];
+
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @Post('/test/interceptor')
   @UseInterceptors(FileStreamInterceptor)
-  async uploadFileWithInterceptor(@Req() req: RequestExcel, @Res() res: Response) {
+  async uploadFileWithInterceptor(
+    @Req() req: RequestExcel,
+    @Res() res: Response,
+    @Next() next,
+  ) {
     const excelStream = req.excelStream;
 
     if (!excelStream) {
       return res.status(400).send('Nenhum arquivo enviado ou processado');
     }
 
-    // Faz o pipe do stream da worksheet para a resposta
-    excelStream.on('end', (result) => {
-      console.log('result', result);
-      res.json({ message: "OK" })
-    });
+    const validationPipe = new EntityValidationPipe(header, testSchema);
+    const jsonToCsvPipe = new JsonToCsvTransform();
+    const writeStream = createWriteStream('output.csv', { encoding: 'utf8' });
 
-    const jsonToCsvPipe = createJsonToCsvStream();
+    pipeline(
+      excelStream,
+      validationPipe,
+      jsonToCsvPipe,
+      writeStream,
+      (error) => {
+        if (error instanceof HttpException) {
+          console.timeLog('upload with stream interceptor');
+          return next(error);
+        } else if (error) {
+          console.timeLog('upload with stream interceptor');
+          return next(new HttpException(error.message, 400));
+        }
 
-    excelStream.pipe(jsonToCsvPipe).pipe(res);
+        // If successful, handle the finish
+        console.timeLog('upload with stream interceptor');
+        res.json({ message: 'OK' });
+      },
+    );
   }
 
   @Post('/test/import')
   uploadFile(@Req() req, @Res() res, @Next() next) {
+    console.time('upload with busboy on controller');
     const bb = busboy({ headers: req.headers });
 
     bb.on('file', (_name, file) => {
@@ -85,6 +116,7 @@ export class AppController {
       req.unpipe(bb);
       bb.removeAllListeners();
       res.status(HttpStatus.OK).json();
+      console.timeEnd('upload with busboy on controller');
     });
 
     req.pipe(bb);
